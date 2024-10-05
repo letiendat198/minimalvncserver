@@ -35,12 +35,16 @@ int main(int argc, char **argv) {
         rfbScreen->desktopName = argv[1];
     else
         rfbScreen->desktopName = "Picture";
+    static const char* passwords[1]={"password"};
+    rfbScreen->authPasswdData = (void*)passwords;
+    rfbScreen->passwordCheck = rfbCheckPasswordByList; // Password checking only works when libvncserver is built without OpenSSL
     rfbScreen->alwaysShared = TRUE;
     rfbScreen->kbdAddEvent = HandleKey;
     rfbScreen->frameBuffer = (char*) malloc(paddedWidth * height * (bbp/8));
 
     /* enable http */
-    rfbScreen->httpDir = "../webclients";
+    // NoVNC doesn't really work so i gave up on JS client and dealing with ssl certs
+    // rfbScreen->httpDir = "../webclients";
 
     /* initialize server */
     rfbInitServer(rfbScreen);
@@ -50,6 +54,10 @@ int main(int argc, char **argv) {
 
     while(true) {
         CaptureScreen(buffer, width, height, bbp);
+        if(buffer==NULL) {
+            printf("Image buffer is NULL! Something went wrong.");
+            return(5);
+        }
         for(int i=3; i<(width*height*(bbp/8)); i+=4) {
             rfbScreen->frameBuffer[i-3] = (char) buffer[i-1];
             rfbScreen->frameBuffer[i-2] = (char) buffer[i-2];
@@ -57,7 +65,7 @@ int main(int argc, char **argv) {
             rfbScreen->frameBuffer[i] = (char) buffer[i];
         }
         rfbMarkRectAsModified(rfbScreen, 0, 0, width, height);
-        _sleep(1000/5);
+        // _sleep(1000/5);
     }
 
     return (0);

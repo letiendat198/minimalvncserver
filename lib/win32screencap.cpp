@@ -3,7 +3,7 @@
 #include "win32screencap.h"
 #include "util.h"
 
-void GetBitmapBuffer(HDC hdc, HBITMAP hBitmap, LPBYTE& bp, DWORD& size, WORD& bbp) {
+BOOL GetBitmapBuffer(HDC hdc, HBITMAP hBitmap, LPBYTE& bp, DWORD& size, WORD& bbp) {
     BITMAPINFO bmi;
     LPBITMAPINFO lpbmi =  &bmi;
 
@@ -11,12 +11,16 @@ void GetBitmapBuffer(HDC hdc, HBITMAP hBitmap, LPBYTE& bp, DWORD& size, WORD& bb
 
     // Load information of bitmap to BITMAPINFO
     int r = GetDIBits(hdc, hBitmap, 0, 0, NULL, lpbmi, DIB_RGB_COLORS);
-    if (!r) PrintError(r);
+    if (!r) {
+        printf("GetDIBits for info failed\n");
+        int errCode = GetLastError();
+        PrintError(errCode);
+        return FALSE;
+    }
 
-    LPBYTE oldp = bp;
+    if (bp!=NULL) free(bp);
     LPBYTE pixBuf = (LPBYTE) malloc(bmi.bmiHeader.biSizeImage);
     bp = pixBuf;
-    if (oldp!=NULL) free(oldp);
 
     bmi.bmiHeader.biPlanes = 1;
     bmi.bmiHeader.biBitCount = 32;
@@ -26,7 +30,12 @@ void GetBitmapBuffer(HDC hdc, HBITMAP hBitmap, LPBYTE& bp, DWORD& size, WORD& bb
     r = GetDIBits(hdc, hBitmap, 0, bmi.bmiHeader.biHeight, bp, lpbmi, DIB_RGB_COLORS);
     size = bmi.bmiHeader.biSizeImage;
     bbp = bmi.bmiHeader.biBitCount;
-    if (!r) PrintError(r);
+
+    if (!r) {
+        printf("GetDIBits for data failed\n");
+        return FALSE;
+    }
+    return TRUE;
 }
 
 void CaptureScreen(LPBYTE& buffer, int& width, int& height, WORD& bbp) {
@@ -34,19 +43,29 @@ void CaptureScreen(LPBYTE& buffer, int& width, int& height, WORD& bbp) {
 
     HDC hScreenDC = GetDC(NULL);
     HDC hMemoryDC = CreateCompatibleDC(hScreenDC);
+    BOOL r;
 
     width = GetSystemMetrics(SM_CXSCREEN);
     height = GetSystemMetrics(SM_CYSCREEN);
 
     HBITMAP hBitmap = CreateCompatibleBitmap(hScreenDC, width, height);
-    HBITMAP hOldBitmap = static_cast<HBITMAP>(SelectObject(hMemoryDC, hBitmap));
-    BitBlt(hMemoryDC, 0, 0, width, height, hScreenDC, 0, 0,SRCCOPY);
-    hBitmap = static_cast<HBITMAP>(SelectObject(hMemoryDC, hOldBitmap));
+    SelectObject(hMemoryDC, hBitmap);
+    r = BitBlt(hMemoryDC, 0, 0, width, height, hScreenDC, 0, 0,SRCCOPY);
+    if (!r) {
+        printf("BitBlt failed\n");
+        int errCode = GetLastError();
+        PrintError(errCode);
+        goto cleanup;
+    }
 
     // Buffer is a LPBYTE - which is a pointer itself, so pass it by reference as normal
-    GetBitmapBuffer(hScreenDC, hBitmap, buffer, size, bbp);
-
-    ReleaseDC(NULL, hMemoryDC);
+    r = GetBitmapBuffer(hScreenDC, hBitmap, buffer, size, bbp);
+    if(!r) {
+        printf("Screen capture failed\n");
+    }
+cleanup:
+    DeleteObject(hBitmap);
+    DeleteDC(hMemoryDC);
     ReleaseDC(NULL, hScreenDC);
 }
 
